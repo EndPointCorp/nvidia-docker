@@ -145,6 +145,45 @@ func (v *Volume) CreateAt(path string) error {
 	return v.Create()
 }
 
+func Copy(src, dst string) error {
+	s, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+
+	fi, err := s.Stat()
+	if err != nil {
+		return err
+	}
+
+	d, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(d, s); err != nil {
+		d.Close()
+		return err
+	}
+
+	if err := d.Chmod(fi.Mode()); err != nil {
+		d.Close()
+		return err
+	}
+
+	return d.Close()
+}
+
+func LinkOrCopy(src, dst string) error {
+	// Prefer hard link, fallback to copy
+	err := os.Link(src, dst)
+	if err != nil {
+		err = Copy(src, dst)
+	}
+	return err
+}
+
 func (v *Volume) Create() (err error) {
 	if err = os.MkdirAll(v.Path, 0755); err != nil {
 		return
@@ -176,7 +215,7 @@ func (v *Volume) Create() (err error) {
 			}
 
 			l := path.Join(dir, path.Base(f))
-			if err := os.Link(f, l); err != nil {
+			if err := LinkOrCopy(f, l); err != nil {
 				return err
 			}
 			soname, err := obj.DynString(elf.DT_SONAME)
